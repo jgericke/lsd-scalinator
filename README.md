@@ -1,5 +1,4 @@
-# Scalinator ![](docs/logo.png)
-![scalinator](docs/logo.png?raw=true "scalinator")
+# ![scalinator](docs/logo.png?raw=true "scalinator") Scalinator
 
 A pod autoscaler which uses Red Hat OpenShift's router metrics to make scale decisions.
 
