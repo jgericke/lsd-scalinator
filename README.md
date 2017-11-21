@@ -1,5 +1,17 @@
-# Scalinator 
-Demonstrating service or transaction based pod autoscaling within OpenShift
+# Scalinator ![](docs/logo.png)
+![scalinator](docs/logo.png?raw=true "scalinator")
+
+A pod autoscaler which uses Red Hat OpenShift's router metrics to make scale decisions.
+
+### Develop/Build
+
+python setup.py develop | build
+
+### Usage
+
+Coming soon!
+
+![](docs/arch.png)
 
 ### Author
 Julian Gericke
