@@ -1,0 +1,215 @@
+#!/usr/bin/env python
+"""
+scalinator : Demonstrating TPS based pod autoscaling within OpenShift
+Author(s): Julian Gericke
+(c) LSD Information Technology
+http://www.lsd.co.za
+"""
+import os
+import sys
+import time
+import logging
+import requests
+import json
+from ocp_utils import ocp_validate_token, ocp_auth
+from notify import rocket_notify
+
+from haproxystats import HAProxyServer
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+if os.environ['SCALINATOR_LOGLEVEL'] and os.environ['SCALINATOR_LOGLEVEL'] == 'DEBUG':
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
+                        format='%(asctime)s %(levelname)s %(message)s')
+else:
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+                        format='%(asctime)s %(levelname)s %(message)s')
+'''
+HAProxy Backend Metrics
+Name	        Description	                                                                               Metric     Type
+rate            number of sessions per second over last elapsed second                                     Work:      Throughput
+req_rate        HTTP requests per second over last elapsed second                                          Work:      Throughput
+req_rate_max    max number of HTTP requests per second observed                                            Work:      Throughput
+req_tot         total number of HTTP requests received                                                     Work:      Throughput
+rtime	        Average backend response time (in ms) for the last 1,024 requests (v1.5+)	               Work:      Throughput
+scur            current sessions                                                                           Work:      Throughput
+econ	        Number of requests that encountered an error attempting to connect to a backend server	   Work:      Error
+dresp	        Responses denied due to security concerns (ACL-restricted)	                               Work:      Error
+eresp	        Number of requests whose responses yielded an error	                                       Work:      Error
+qcur	        Current number of requests unassigned in queue	                                           Resource:  Saturation
+qtime	        Average time spent in queue (in ms) for the last 1,024 requests (v1.5+)	                   Resource:  Saturation
+wredis	        Number of times a request was redispatched to a different backend	                       Resource:  Availability
+wretr	        Number of times a connection was retried	                                               Resource:  Availability
+'''
+
+
+def retr_router_stats(router_fqdn, router_port, router_user, router_passwd):
+    try:
+        router_stats = HAProxyServer(
+            router_fqdn + ':' + router_port, router_user, router_passwd, False)
+        return(json.loads(router_stats.to_json()))
+    except Exception as error:
+        logging.error(error)
+        raise
+
+
+def retr_router_be_rate(router_stats, router_fqdn, router_backend):
+    try:
+        router_backend_stats = list(filter(lambda backend_stats: backend_stats[
+                                    'name'] == router_backend, router_stats[router_fqdn]['backends']))
+        if router_backend_stats and 'rate' in router_backend_stats[0]:
+            return(router_backend_stats[0]['rate'])
+    except Exception as error:
+        logging.error(error)
+        raise
+
+
+def retr_ocp_replicas(ocp_fqdn, ocp_port, ocp_auth_token, ocp_namespace, ocp_deploymentconfig):
+    try:
+        ocp_replicas_resp = requests.get('https://' + ocp_fqdn + ':' + ocp_port + '/oapi/v1/namespaces/' + ocp_namespace + '/deploymentconfigs/' + ocp_deploymentconfig + '/scale',
+                                         headers={
+                                             'Authorization': 'Bearer ' + ocp_auth_token},
+                                         verify=False)
+        return(ocp_replicas_resp.json()['status']['replicas'])
+    except Exception as error:
+        logging.error(error)
+        raise
+
+
+def ocp_scale_rate(router_be_rate):
+    '''
+    Scaling on pre-calculated thresholds is kinda weak...
+    - Ideally this would be a moving average based decision
+    - Ideally-ier additional metrics such as req_rate, rtime and scur would be factored in
+    Lastly, yuck!
+    '''
+    # Caters to 0 active load generator/minimal traffic
+    if router_be_rate >= 0 and router_be_rate <= 9:
+        return(1)
+    # Caters to 1 active load generators/modest traffic
+    if router_be_rate >= 10 and router_be_rate <= 29:
+        return(2)
+    # Caters to 2+ active load generators/decent traffic
+    if router_be_rate >= 30:
+        return(3)
+
+
+def ocp_scale_dc(ocp_fqdn, ocp_port, ocp_auth_token, ocp_namespace, ocp_deploymentconfig, ocp_replicas):
+    try:
+        ocp_scale_payload = {'kind': 'Scale',
+                             'apiVersion': 'extensions/v1beta1',
+                             'metadata': {
+                                 'name': ocp_deploymentconfig,
+                                 'namespace': ocp_namespace
+                             },
+                             'spec': {
+                                 'replicas': ocp_replicas
+                             },
+                             'status': {
+                                 'targetSelector': 'app=ocp_deploymentconfig,deploymentconfig=ocp_deploymentconfig'
+                             },
+                             }
+        ocp_scale_dc_resp = requests.put('https://' + ocp_fqdn + ':' + ocp_port + '/oapi/v1/namespaces/' + ocp_namespace + '/deploymentconfigs/' + ocp_deploymentconfig + '/scale',
+                                         data=json.dumps(ocp_scale_payload),
+                                         headers={
+                                             'Content-type': 'application/json', 'Authorization': 'Bearer ' + ocp_auth_token},
+                                         verify=False)
+        logging.debug('scale action {}'.format(ocp_scale_dc_resp))
+    except Exception as error:
+        logging.error(error)
+        raise
+
+
+if __name__ == "__main__":
+    try:
+        rocket_webhook_url = os.environ['ROCKET_WEBHOOK_URL']
+        router_fqdn = os.environ['ROUTER_FQDN']
+        router_port = os.environ['ROUTER_PORT']
+        router_user = os.environ['ROUTER_USER']
+        router_passwd = os.environ['ROUTER_PASSWD']
+        router_backend = os.environ['ROUTER_BACKEND']
+        openshift_fqdn = os.environ['OPENSHIFT_FQDN']
+        openshift_port = os.environ['OPENSHIFT_PORT']
+        openshift_user = os.environ['OPENSHIFT_USER']
+        openshift_passwd = os.environ['OPENSHIFT_PASSWD']
+        openshift_namespace = os.environ['OPENSHIFT_NAMESPACE']
+        openshift_deploymentconfig = os.environ['OPENSHIFT_DEPLOYMENTCONFIG']
+        scalinator_name = os.environ['SCALINATOR_NAME']
+        scalinator_sample_time = int(os.environ['SCALINATOR_SAMPLE_TIME'])
+        scalinator_sample_length = int(os.environ['SCALINATOR_SAMPLE_LENGTH'])
+    except Exception as error:
+        logging.error(error)
+        raise
+    rocket_notify(rocket_webhook_url, '\n----- {} active ----- \
+               \nrouter_fqdn:\t{}:{} \
+               \nrouter_backend:\t{} \
+               \nopenshift_fqdn:\t{} \
+               \nopenshift_port:\t{} \
+               \nopenshift_namespace:\t{} \
+               \nopenshift_deploymentconfig:\t{} \
+               \nscalinator_sample_time:\t{}s \
+               \nscalinator_sample_length:\t{}'
+                     .format(scalinator_name, router_fqdn, router_port, router_backend,
+                             openshift_fqdn, openshift_port, openshift_namespace, openshift_deploymentconfig,
+                             scalinator_sample_time, scalinator_sample_length), logging)
+    logging.info('{} starting'.format(scalinator_name))
+    logging.info('router_fqdn {} router_port {} router_backend {}'.format(
+        router_fqdn, router_port, router_backend))
+    logging.info('openshift_fqdn {} openshift_port {} openshift_namespace {} openshift_deploymentconfig {}'.format(
+        openshift_fqdn, openshift_port, openshift_namespace, openshift_deploymentconfig))
+    logging.info('scalinator_sample_time {} scalinator_sample_length {}'.format(
+        scalinator_sample_time, scalinator_sample_length))
+
+
+
+    openshift_auth_token = ocp_auth(
+        openshift_fqdn, openshift_port, openshift_user, openshift_passwd, logging)
+    openshift_curr_replicas = retr_ocp_replicas(
+        openshift_fqdn, openshift_port, openshift_auth_token, openshift_namespace, openshift_deploymentconfig)
+    router_be_rate_aggr = []
+
+    
+    try:
+        while True:
+            for rate_sample_count in range(scalinator_sample_time):
+                router_stats = retr_router_stats(
+                    router_fqdn, router_port, router_user, router_passwd)
+                router_be_rate = retr_router_be_rate(
+                    router_stats, router_fqdn, router_backend)
+                if isinstance(router_be_rate, int):
+                    router_be_rate_aggr.append(router_be_rate)
+                    logging.debug('{} rates {}'.format(
+                        scalinator_name, router_be_rate_aggr))
+                    rate_mov_avg = int(
+                        round(sum(router_be_rate_aggr) / float(len(router_be_rate_aggr))))
+                    logging.debug('{} backend {} has rate {} with current average {}'.format(
+                        scalinator_name, router_backend, router_be_rate, rate_mov_avg))
+                else:
+                    logging.warn('{} retrieved an invalid router_be_rate'.format(
+                        scalinator_name))
+                time.sleep(1)
+            if len(router_be_rate_aggr) > scalinator_sample_length:
+                del router_be_rate_aggr[0:scalinator_sample_time]
+            ocp_scale_target = ocp_scale_rate(rate_mov_avg)
+            logging.debug('{} ocp_scale_target {} rate_mov_avg {}'.format(
+                scalinator_name, ocp_scale_target, rate_mov_avg))
+            if(ocp_scale_target > openshift_curr_replicas) or (ocp_scale_target < openshift_curr_replicas):
+                rocket_notify(rocket_webhook_url, '\n{} : scaling {} from {} to {}\n[rate average {}]'
+                                 .format(scalinator_name, openshift_deploymentconfig, openshift_curr_replicas, ocp_scale_target, rate_mov_avg), logging)
+                logging.info('{} scaling {} from {} to {} rate average {}'.format(
+                    scalinator_name, openshift_deploymentconfig, openshift_curr_replicas, ocp_scale_target, rate_mov_avg))
+                if not ocp_validate_token(openshift_fqdn, openshift_auth_token, logging):
+                    openshift_auth_token = ocp_auth(
+                        openshift_fqdn, openshift_port, openshift_user, openshift_passwd, logging)
+                ocp_scale_dc(openshift_fqdn, openshift_port, openshift_auth_token, openshift_namespace,
+                             openshift_deploymentconfig, ocp_scale_target)
+                openshift_curr_replicas = ocp_scale_target
+                rocket_notify(rocket_webhook_url, '\n{} : scaling {} complete\n[replicas {}]'.format(
+                    scalinator_name, openshift_deploymentconfig, openshift_curr_replicas), logging)
+                logging.info('{} scaled {} replicas {}'.format(
+                    scalinator_name, openshift_deploymentconfig, openshift_curr_replicas))
+                time.sleep(10)
+    except (KeyboardInterrupt, SystemExit):
+        logging.info('received interrupt, exiting')
+        exit(0)

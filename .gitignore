@@ -1,0 +1,9 @@
+__pycache__/
+tests/run.sh
+.DS_Store
+launch.sh
+build.sh
+service.log
+arch
+build
+*.egg-info
