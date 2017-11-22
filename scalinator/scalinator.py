@@ -140,33 +140,35 @@ async def scale(scaler, openshift):
             await asyncio.sleep(scaler.scale_interval)
 
 
-def init():
+if __name__ == "__main__":
     try:
-        scaler = Scalinator(biome.SCALINATOR.name, biome.SCALINATOR.poll_interval, biome.SCALINATOR.scale_interval, biome.SCALINATOR.sample_time, biome.SCALINATOR.sample_length, biome.SCALINATOR.router_backend, biome.SCALINATOR.openshift_namespace, biome.SCALINATOR.openshift_deploymentconfig)
+        scalers = []
         router = Router(biome.ROUTER.uri, biome.ROUTER.user, biome.ROUTER.passwd)
         openshift = OpenShift(biome.OPENSHIFT.uri, biome.OPENSHIFT.user, biome.OPENSHIFT.passwd)
-        
+        for cfg in range(len(biome.SCALINATOR.get_dict('config')['scalers'])):
+            scalers.append(Scalinator(
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['name'], 
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['poll_interval'], 
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['scale_interval'],
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['sample_time'], 
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['sample_length'],
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['router_backend'],
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_namespace'],
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_deploymentconfig']))
         try:
             ioloop = asyncio.get_event_loop()
-            tasks = [
-                ioloop.create_task(poll(scaler, router, openshift)),
-            ]
+            for scaler in scalers:
+                tasks = [
+                    ioloop.create_task(poll(scaler, router, openshift)),
+                ]        
             ioloop.run_until_complete(asyncio.wait(tasks))
         except KeyboardInterrupt:
             pass
         finally:
-            print('step: loop.close()')
             ioloop.close()
-        
-
     except (KeyError, ValueError, AttributeError, TypeError) as env_error:
         logging.error(env_error)        
         raise
     except Exception as error:
         logging.error(error)
         raise
-
-
-if __name__ == "__main__":
-    init()
-
