@@ -9,15 +9,13 @@ import os
 import sys
 import time
 import logging
-import requests
 import json
 import asyncio
 import biome
 from openshift import OpenShift
 from router import Router
 from notify import rocket_notify
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 
 try: 
     if hasattr(biome.SCALINATOR, 'loglevel'):
@@ -42,9 +40,38 @@ class Scalinator(object):
         self.openshift_namespace = scalinator_openshift_namespace
         self.openshift_deploymentconfig = scalinator_openshift_deploymentconfig
         self.rate_aggr = []
-        self.replicas = 0
+        self.current_replicas = 0
+
+
+    def ScaleAggregator(self, be_rate):
+        '''
+        Test we have a valid BE rate to work with
+        '''
+        if isinstance(be_rate, int):
+            '''
+            Append to scaler's rate aggregation
+            '''
+            self.rate_aggr.append(be_rate)        
+        else:
+            logging.warn('{} retrieved an invalid be_rate'.format(
+                self.name))
+
+
+    def ScaleMedian(self):
+        '''
+        If aggregated rates are in excess of the defined sample length
+        purge oldest rate aggregation
+        '''
+        if len(self.rate_aggr) > self.sample_length:
+            del self.rate_aggr[0:self.sample_time]
+        '''
+        Average rate for rate aggregation (rate_aggr)
+        '''    
+        self.avg_rate = int(
+            round(sum(self.rate_aggr) / float(len(self.rate_aggr))))      
+
    
-    def ScaleArbiter(self, avg_rate):
+    def ScaleArbiter(self):
         '''
         Scaling on pre-calculated thresholds is kinda weak...
         - Ideally this would be a moving average based decision
@@ -52,97 +79,41 @@ class Scalinator(object):
         Lastly, yuck!
         '''
         # Caters to 0 active load generator/minimal traffic
-        if avg_rate >= 0 and avg_rate <= 9:
-            return(1)
+        if self.avg_rate >= 0 and self.avg_rate <= 9:
+            self.target_replicas = 1
         # Caters to 1 active load generators/modest traffic
-        if avg_rate >= 10 and avg_rate <= 29:
-            return(2)
+        if self.avg_rate >= 10 and self.avg_rate <= 29:
+            self.target_replicas = 2
         # Caters to 2+ active load generators/decent traffic
-        if avg_rate >= 30:
-            return(3)         
+        if self.avg_rate >= 30:
+            self.target_replicas = 3
 
 
-async def poll(router):
-    try:
-        '''
-        Poll router stats
-        '''
-        Router.RetrStats(router)
-        logging.debug(router.stats)
-    except Exception as error:
-        logging.error(error)
-        raise
-
-async def aggregate(scaler, router):
-        for rate_sample_count in range(scaler.sample_time):
-            '''
-            Extract rate (sessions p/s over the last second)
-            from polled router_stats
-            '''
-            router_be_rate = Router.RetrBackendRate(router, scaler.router_backend)
-            '''
-            Confirm we have a rate to work with
-            '''
-            if isinstance(router_be_rate, int):
-                '''
-                Append to our rate aggregation
-                '''
-                scaler.rate_aggr.append(router_be_rate)
-                logging.debug('{} current rate {} aggregated rates {}'.format(scaler.name, router_be_rate, scaler.rate_aggr))
-                await asyncio.sleep(scaler.poll_interval)       
-            else:
-                logging.warn('{} retrieved an invalid router_be_rate'.format(
-                    scaler.name))
-        await scale(scaler, openshift)
-
-async def scale(scaler, openshift):
-        '''
-        If aggregated rates are in excess of the defined sample length
-        purge oldest rate aggregation
-        '''
-        if len(scaler.rate_aggr) > scaler.sample_length:
-            del scaler.rate_aggr[0:scaler.sample_time]
-            logger.debug('{} purged rate_aggr {}'.format(scaler.name, scaler.rate_aggr))
-        '''
-        Calculate an average against aggregated
-        rates
-        '''    
-        avg_rate = int(
-            round(sum(scaler.rate_aggr) / float(len(scaler.rate_aggr))))                
-        '''
-        Retrieve number of applicable replicas based on averaged rate
-        '''
-        replica_target = scaler.ScaleArbiter(avg_rate)
-        logging.debug('{} replica_target {} avg_rate {}'.format(
-            scaler.name, replica_target, avg_rate))
+    def ScaleOrchestrator(self, openshift):
         '''
         Confirm OpenShift oauth2 token validity and re-auth if required
         '''
         if not openshift.ValidateToken():
-            openshift.Auth()        
+            openshift.Auth()    
         ''' 
         Retrieve current replicas
         '''
-        scaler.replicas = openshift.RetrReplicas(scaler.openshift_namespace, scaler.openshift_deploymentconfig)
-        logging.debug('{} current replicas {}'.format(scaler.name, scaler.replicas))
+        self.current_replicas = openshift.RetrReplicas(self.openshift_namespace, self.openshift_deploymentconfig)
+        logging.debug('{} current replicas {}'.format(self.name, self.current_replicas))
         '''
-        Determined current to desired replicas
+        Determine current to desired replicas
         '''
-        if(replica_target > scaler.replicas) or (replica_target < scaler.replicas):
+        if(self.target_replicas > self.current_replicas) or (self.target_replicas < self.current_replicas):
             logging.info('{} scaling {} from {} to {} rate average {}'.format(
-                scaler.name, scaler.openshift_deploymentconfig, scaler.replicas, replica_target, avg_rate))
+                self.name, self.openshift_deploymentconfig, self.current_replicas, self.target_replicas, self.avg_rate))            
             '''
             Scale out/in based on retrieved scale rate and update
             current replicas
             '''
-            openshift.SetReplicas(scaler.openshift_namespace, scaler.openshift_deploymentconfig, replica_target)
-            scaler.replicas = replica_target
+            openshift.SetReplicas(self.openshift_namespace, self.openshift_deploymentconfig, self.target_replicas)
+            self.current_replicas = self.target_replicas
             logging.info('{} scaled {} replicas {}'.format(
-                scaler.name, scaler.openshift_deploymentconfig, scaler.replicas))
-            '''
-            Cooling period before we continue polling
-            '''
-            await asyncio.sleep(scaler.scale_interval)
+                scaler.name, scaler.openshift_deploymentconfig, scaler.current_replicas))        
 
 
 if __name__ == "__main__":
@@ -161,16 +132,40 @@ if __name__ == "__main__":
                 biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_namespace'],
                 biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_deploymentconfig']))
         try:
-            ioloop = asyncio.get_event_loop()
+            '''
+            Poll router stats
+            '''
+            Router.RetrStats(router)
+
             for scaler in scalers:
-                tasks = [
-                    ioloop.create_task(poll(scaler, router, openshift)),
-                ]        
-            ioloop.run_until_complete(asyncio.wait(tasks))
+            
+                '''
+                Aggregate polled rate for router_backends
+                '''
+                Scalinator.ScaleAggregator(scaler, Router.RetrBackendRate(router, scaler.router_backend))
+                logging.debug('{} rate aggregation {}'.format(scaler.name, scaler.rate_aggr)) 
+
+                '''
+                Retrieve a moving average for rate aggregations 
+                '''
+                Scalinator.ScaleMedian(scaler)
+                logging.debug('{} average rate {}'.format(scaler.name, scaler.avg_rate))
+
+                '''
+                Retrieve target replicas based on averaged rate
+                '''
+                Scalinator.ScaleArbiter(scaler)
+                logging.debug('{} target replicas {}'.format(scaler.name, scaler.target_replicas))
+
+                '''
+                Effect scale action based on target replicas
+                '''
+                Scalinator.ScaleOrchestrator(scaler, openshift)
+
         except KeyboardInterrupt:
             pass
         finally:
-            ioloop.close()
+            pass
     except (KeyError, ValueError, AttributeError, TypeError) as env_error:
         logging.error(env_error)        
         raise

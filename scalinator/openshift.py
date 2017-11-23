@@ -10,6 +10,9 @@ import urllib
 import json
 import logging
 
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 logger = logging.getLogger(__name__)
 
 class OpenShift(object):
