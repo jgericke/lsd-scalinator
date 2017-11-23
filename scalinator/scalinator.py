@@ -62,18 +62,24 @@ class Scalinator(object):
             return(3)         
 
 
-async def poll(scaler, router, openshift):
-    while True:
-        for rate_sample_count in range(scaler.sample_time):    
-            '''
-            Poll router stats
-            '''
-            router_stats = Router.RetrStats(router)
+async def poll(router):
+    try:
+        '''
+        Poll router stats
+        '''
+        Router.RetrStats(router)
+        logging.debug(router.stats)
+    except Exception as error:
+        logging.error(error)
+        raise
+
+async def aggregate(scaler, router):
+        for rate_sample_count in range(scaler.sample_time):
             '''
             Extract rate (sessions p/s over the last second)
             from polled router_stats
             '''
-            router_be_rate = Router.RetrBackendRate(router, router_stats, scaler.router_backend)
+            router_be_rate = Router.RetrBackendRate(router, scaler.router_backend)
             '''
             Confirm we have a rate to work with
             '''
@@ -88,7 +94,6 @@ async def poll(scaler, router, openshift):
                 logging.warn('{} retrieved an invalid router_be_rate'.format(
                     scaler.name))
         await scale(scaler, openshift)
-            
 
 async def scale(scaler, openshift):
         '''
