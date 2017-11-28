@@ -1,10 +1,8 @@
-#!/usr/bin/env python
-"""
-openshift : Common OpenShifty things
-Author(s): Julian Gericke (julian@lsd.co.za)
-(c) LSD Information Technology
-http://www.lsd.co.za
-"""
+"""Scalinator : rate based pod autoscaling within Red Hat OpenShift."""
+# !/usr/bin/env/python
+# Author(s): Julian Gericke <julian@lsd.co.za>
+# (c) LSD Information Technology
+# http://www.lsd.co.za
 import requests
 import urllib
 import json
@@ -15,7 +13,9 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
+
 class OpenShift(object):
+    """OpenShift: General OCP Methods."""
 
     def __init__(self, openshift_uri, openshift_user, openshift_passwd):
         self.uri = openshift_uri
@@ -28,23 +28,25 @@ class OpenShift(object):
         Generate oauth2 token
         '''
         try:
-            ocp_auth_resp = requests.get(self.uri + '/oauth/authorize?response_type=token&client_id=openshift-challenging-client',
+            ocp_auth_resp = requests.get(self.uri +
+                                         '/oauth/authorize?response_type=token&client_id=openshift-challenging-client',
                                          auth=(self.user, self.passwd),
                                          headers={'X-CSRF-Token': '1'},
                                          verify=False)
             ocp_auth_url = dict(urllib.parse.parse_qs(ocp_auth_resp.url))
-            self.token = ocp_auth_url[u''+self.uri + '/oauth/token/implicit#access_token'][0]
+            self.token = ocp_auth_url[u'' + self.uri +
+                                      '/oauth/token/implicit#access_token'][0]
         except Exception as error:
             logger.error(error)
             raise
-
 
     def ValidateToken(self):
         '''
         Validate oauth2 token
         '''
         try:
-            ocp_validtoken_resp = requests.get(self.uri + '/oapi/v1/oauthaccesstokens/' + self.token,
+            ocp_validtoken_resp = requests.get(self.uri +
+                                               '/oapi/v1/oauthaccesstokens/' + self.token,
                                                headers={
                                                    'Authorization': 'Bearer ' + self.token},
                                                verify=False)
@@ -54,15 +56,17 @@ class OpenShift(object):
             logger.error(error)
             raise
 
-
-
-
     def RetrReplicas(self, openshift_namespace, openshift_deploymentconfig):
         '''
         Return current replicas when passed a namespace and deploymentconfig
-        '''    
+        '''
         try:
-            ocp_replicas_resp = requests.get(self.uri + '/oapi/v1/namespaces/' + openshift_namespace + '/deploymentconfigs/' + openshift_deploymentconfig + '/scale',
+            ocp_replicas_resp = requests.get(self.uri +
+                                             '/oapi/v1/namespaces/' +
+                                             openshift_namespace +
+                                             '/deploymentconfigs/' +
+                                             openshift_deploymentconfig +
+                                             '/scale',
                                              headers={
                                                  'Authorization': 'Bearer ' + self.token},
                                              verify=False)
@@ -70,8 +74,6 @@ class OpenShift(object):
         except Exception as error:
             logger.error(error)
             raise
-
-
 
     def SetReplicas(self, openshift_namespace, openshift_deploymentconfig, openshift_replicas):
         '''
@@ -91,8 +93,14 @@ class OpenShift(object):
                                      'targetSelector': 'app=openshift_deploymentconfig,deploymentconfig=openshift_deploymentconfig'
                                  },
                                  }
-            ocp_scale_dc_resp = requests.put(self.uri + '/oapi/v1/namespaces/' + openshift_namespace + '/deploymentconfigs/' + openshift_deploymentconfig + '/scale',
-                                             data=json.dumps(ocp_scale_payload),
+            ocp_scale_dc_resp = requests.put(self.uri +
+                                             '/oapi/v1/namespaces/' +
+                                             openshift_namespace +
+                                             '/deploymentconfigs/' +
+                                             openshift_deploymentconfig +
+                                             '/scale',
+                                             data=json.dumps(
+                                                 ocp_scale_payload),
                                              headers={
                                                  'Content-type': 'application/json', 'Authorization': 'Bearer ' + self.token},
                                              verify=False)

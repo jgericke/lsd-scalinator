@@ -1,10 +1,8 @@
-#!/usr/bin/env python
-"""
-router : Retrieves OCP router/HAProxy stats, extracts BE rate metric
-Author(s): Julian Gericke (julian@lsd.co.za)
-(c) LSD Information Technology
-http://www.lsd.co.za
-"""
+"""Scalinator : rate based pod autoscaling within Red Hat OpenShift."""
+# !/usr/bin/env/python
+# Author(s): Julian Gericke <julian@lsd.co.za>
+# (c) LSD Information Technology
+# http://www.lsd.co.za
 import json
 import re
 import logging
@@ -12,7 +10,9 @@ from haproxystats import HAProxyServer
 
 logger = logging.getLogger(__name__)
 
+
 class Router(object):
+    """Router: Retrieve HAProxy statistics."""
 
     def __init__(self, router_uri, router_user, router_passwd):
         self.uri = router_uri
@@ -36,10 +36,9 @@ class Router(object):
         '''
         Retrieve backend rate metric:
         rate: number of sessions per second over last elapsed second
-        '''    
+        '''
         try:
-            router_backend_rate = list(filter(lambda backend_stats: backend_stats[
-                                        'name'] == router_backend, self.stats[self.fqdn]['backends']))
+            router_backend_rate = list(filter(lambda backend_stats: backend_stats['name'] == router_backend, self.stats[self.fqdn]['backends']))
             if router_backend_rate and 'rate' in router_backend_rate[0]:
                 return(router_backend_rate[0]['rate'])
         except Exception as error:
