@@ -1,20 +1,18 @@
-#!/usr/bin/env python
-"""
-notify : Common notification-y things
-Author(s): Julian Gericke (julian@lsd.co.za)
-(c) LSD Information Technology
-http://www.lsd.co.za
-"""
+"""Scalinator : rate based pod autoscaling within Red Hat OpenShift."""
+# !/usr/bin/env/python
+# Author(s): Julian Gericke <julian@lsd.co.za>
+# (c) LSD Information Technology
+# http://www.lsd.co.za
 import json
 import requests
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 def rocket_notify(rocket_webhook_url, rocket_msg):
-    '''
-    WebHook notify (RocketChat)
-    '''
+    '''WebHook notify (RocketChat)'''
+
     try:
         rocket_msg = {'text': rocket_msg}
         requests.post(rocket_webhook_url,
