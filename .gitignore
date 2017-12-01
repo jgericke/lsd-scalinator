@@ -1,4 +1,5 @@
 __pycache__/
+.cache
 tests/run.sh
 .DS_Store
 launch.sh
