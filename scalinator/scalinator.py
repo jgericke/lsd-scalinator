@@ -60,36 +60,16 @@ class Scalinator(object):
         '''
         if self.avg_rate < self.thresholds['low']['rate_min']:
             self.target_replicas = self.thresholds['floor']['replicas']
-            
-            logging.info('\n{} floor replicas\n'.format(self.thresholds['floor']['replicas']))
-
         elif (self.avg_rate >= self.thresholds['low']['rate_min']) and (self.avg_rate <= self.thresholds['low']['rate_max']):
             self.target_replicas = self.thresholds['low']['replicas']
-
-            logging.info('\n{} low replicas\n'.format(self.thresholds['low']['replicas']))
-
-
         elif (self.avg_rate >= self.thresholds['med']['rate_min']) and (self.avg_rate <= self.thresholds['med']['rate_max']):
             self.target_replicas = self.thresholds['med']['replicas']
-
-            logging.info('\n{} med replicas\n'.format(self.thresholds['med']['replicas']))
-
-
         elif (self.avg_rate >= self.thresholds['high']['rate_min']) and (self.avg_rate <= self.thresholds['high']['rate_max']):
             self.target_replicas = self.thresholds['high']['replicas']
-
-            logging.info('\n{} high replicas\n'.format(self.thresholds['high']['replicas']))
-
         elif self.avg_rate >= self.thresholds['ceiling']['rate_min']:
             self.target_replicas = self.thresholds['ceiling']['replicas']
-
-
-            logging.info('\n{} ceiling replicas\n'.format(self.thresholds['ceiling']['replicas']))
-
         else:
             self.target_replicas = self.thresholds['default']['replicas']
-
-            logging.info('\n{} default replicas\n'.format(self.thresholds['default']['replicas']))
 
     def ScaleRetrReplicas(self, openshift):
         '''

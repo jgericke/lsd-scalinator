@@ -48,7 +48,6 @@ if __name__ == "__main__":
                             scaler, Router.RetrBackendRate(router, scaler.router_backend))
                         logging.debug('{} rate aggregation {}'.format(
                             scaler.name, scaler.rate_aggr))
-
                         '''
                         Retrieve a moving average for rate aggregations
                         '''
