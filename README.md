@@ -10,7 +10,6 @@ python setup.py [develop|build]
 
 Define relevant environment variables (see bin/env)
 
-
 ### Notes
 
 When running ose-haproxy-router image version v3.6.173 and above remove the 
