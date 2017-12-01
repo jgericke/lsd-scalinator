@@ -1,0 +1,81 @@
+#!/usr/bin/env sh
+export ROUTER_URI='http://router.svc.addr:1936'
+export ROUTER_USER='admin'
+export ROUTER_PASSWD='router.pwd'
+export ROUTER_POLL_INTERVAL=2
+export OPENSHIFT_URI='https://openshift.fqdn:8443'
+export OPENSHIFT_USER='scalinator'
+export OPENSHIFT_PASSWD='scalinator.pwd'
+export SCALINATOR_LOGLEVEL='DEBUG'
+export SCALINATOR_CONFIG='{ "scalers": [
+                                {
+                                    "name": "scaler-demo-01",
+                                    "sample_length": 20,
+                                    "router_backend": "be_http:scalinator:demo-01",
+                                    "openshift_namespace": "scalinator",
+                                    "openshift_deploymentconfig": "demo-01",
+                                    "thresholds": {
+                                        "default": {                                      
+                                            "replicas": 1,
+                                        },                                        
+                                        "floor": {                                      
+                                            "replicas": 1,
+                                        },
+                                        "low": {
+                                            "rate_min": 10,
+                                            "rate_max": 24,                                            
+                                            "replicas": 2,
+                                        },
+                                        "med": {
+                                            "rate_min": 25,
+                                            "rate_max": 39,                                            
+                                            "replicas": 4,
+                                        },
+                                        "high": {
+                                            "rate_min": 40,
+                                            "rate_max": 59,                                            
+                                            "replicas": 6,
+                                        },
+                                        "ceiling": {
+                                            "rate_min": 60,                                       
+                                            "replicas": 8,
+                                        },                                        
+                                    },                                                                  
+                                },
+                                {
+                                    "name": "scaler-demo-02",
+                                    "sample_length": 20,
+                                    "router_backend": "be_http:scalinator:demo-02",
+                                    "openshift_namespace": "scalinator",
+                                    "openshift_deploymentconfig": "scalinator",
+                                    "thresholds": {
+                                        "default": {                                      
+                                            "replicas": 1,
+                                        },                                        
+                                        "floor": {                                         
+                                            "replicas": 1,
+                                        },
+                                        "low": {
+                                            "rate_min": 10,
+                                            "rate_max": 24,                                            
+                                            "replicas": 2,
+                                        },
+                                        "med": {
+                                            "rate_min": 25,
+                                            "rate_max": 39,                                            
+                                            "replicas": 4,
+                                        },
+                                        "high": {
+                                            "rate_min": 40,
+                                            "rate_max": 59,                                            
+                                            "replicas": 6,
+                                        },
+                                        "ceiling": {
+                                            "rate_min": 60,                                       
+                                            "replicas": 8,
+                                        },
+                                    },                                   
+                                },
+                            ]
+                        }'
+python scaler.py

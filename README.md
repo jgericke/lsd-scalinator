@@ -2,13 +2,19 @@
 
 A pod autoscaler which uses Red Hat OpenShift's router metrics to make scale decisions.
 
-### Develop/Build
+### Build
 
-python setup.py develop | build
+python setup.py [develop|build]
 
 ### Usage
 
-Coming soon!
+Define relevant environment variables (see bin/env)
+
+
+### Notes
+
+When running ose-haproxy-router image version v3.6.173 and above remove the 
+ROUTER_METRICS_TYPE envar to permit external access to the haproxy stats endpoint (oc env dc router ROUTER_METRICS_TYPE-)
 
 ![](docs/arch.png)
 
