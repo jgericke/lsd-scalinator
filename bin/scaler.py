@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 if __name__ == "__main__":
+    '''
+    Setup scheduler and process envars
+    '''
     try:
         scalers = []
         router_scheduler = BackgroundScheduler()
@@ -27,8 +30,10 @@ if __name__ == "__main__":
                 biome.SCALINATOR.get_dict('config')['scalers'][cfg]['sample_length'],
                 biome.SCALINATOR.get_dict('config')['scalers'][cfg]['router_backend'],
                 biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_namespace'],
-                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_deploymentconfig']))
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['openshift_deploymentconfig'],
+                biome.SCALINATOR.get_dict('config')['scalers'][cfg]['thresholds']))
         '''
+        Main loop for polling
         '''
         try:
             router_scheduler.add_job(Router.RetrStats, 'interval', [router], seconds=router_poll_interval, id='retrstats')
@@ -61,13 +66,17 @@ if __name__ == "__main__":
                             '''
                             Retrieve current replicas
                             '''
-                            ScaleRetrReplicas(scaler, openshift)
+                            Scalinator.ScaleRetrReplicas(scaler, openshift)
                             logging.debug('{} current replicas {}'.format(scaler.name, scaler.current_replicas))
 
-
-
-
-                time.sleep(router_poll_interval)
+                            '''
+                            Effect scale action based on target replicas
+                            '''
+                            Scalinator.ScaleOrchestrator(scaler, openshift)
+                '''
+                Ugly way to ensure scheduler stays ahead of scalers
+                '''
+                time.sleep(router_poll_interval + 0.5)
 
         except (KeyboardInterrupt, SystemExit):
             router_scheduler.shutdown(wait=False)
