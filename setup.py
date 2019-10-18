@@ -10,7 +10,7 @@ setup(
     license='WTFPL',
     scripts=["bin/scaler.py"],
     install_requires=[
-        'requests==2.18.4',
+        'requests==2.20.0',
         'haproxystats==0.3.15',
         'urllib3==1.22',
         'APScheduler==3.4.0',
