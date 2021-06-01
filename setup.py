@@ -12,7 +12,7 @@ setup(
     install_requires=[
         'requests==2.20.0',
         'haproxystats==0.3.15',
-        'urllib3==1.24.2',
+        'urllib3==1.26.5',
         'APScheduler==3.4.0',
         'biome==0.1.3'
     ],
